@@ -1,4 +1,6 @@
 import { createServer } from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
 import type {
@@ -13,6 +15,13 @@ const app = express();
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', env: config.nodeEnv });
 });
+
+// En production, le serveur sert aussi le client compilé (même origine).
+if (config.isProd) {
+  const clientDist = join(dirname(fileURLToPath(import.meta.url)), '../../client/dist');
+  app.use(express.static(clientDist));
+  app.get('*', (_req, res) => res.sendFile(join(clientDist, 'index.html')));
+}
 
 const httpServer = createServer(app);
 

@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Thème Kuhhandel : tapis de jeu vert, accents bois/laiton. */
+@theme {
+  --color-felt-900: #0f3d24;
+  --color-felt-800: #14502f;
+  --color-felt-700: #1e7a46;
+  --color-felt-600: #2a9d5a;
+  --color-brass-500: #d9a441;
+  --color-brass-600: #b8860b;
+  --color-parchment: #f7f1e1;
+  --font-display: "Georgia", "Cambria", serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Empêche le zoom iOS sur les inputs (police >= 16px) et le débordement. */
+input,
+button,
+select {
+  font-size: 16px;
+}

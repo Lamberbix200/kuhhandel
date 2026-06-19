@@ -1,0 +1,24 @@
+# Postgres local pour le développement (auth + comptes).
+#   Démarrer : docker compose up -d
+#   Arrêter  : docker compose down       (ajouter -v pour effacer les données)
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: kuhhandel-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kuhhandel
+      POSTGRES_PASSWORD: kuhhandel
+      POSTGRES_DB: kuhhandel
+    ports:
+      - '5432:5432'
+    volumes:
+      - kuhhandel_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kuhhandel -d kuhhandel']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kuhhandel_pgdata:

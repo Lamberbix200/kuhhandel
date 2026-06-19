@@ -18,6 +18,7 @@ import type {
   ServerToClientEvents,
 } from '@kuhhandel/shared';
 import { getGuestId, getStoredPseudo, storePseudo } from './identity';
+import { useAuth } from './auth';
 
 type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -42,6 +43,7 @@ interface SocketContextValue {
 const SocketContext = createContext<SocketContextValue | null>(null);
 
 export function SocketProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [pseudo, setPseudoState] = useState<string>(getStoredPseudo());
   const [connected, setConnected] = useState(false);
   const [lobbyRooms, setLobbyRooms] = useState<RoomSummary[]>([]);
@@ -50,10 +52,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<AppSocket | null>(null);
 
+  // Connecte le socket dès qu'on a une identité : compte (cookie de session porté
+  // par withCredentials) ou, à défaut, invité (guestId + pseudo). On reconnecte
+  // quand l'identité change (connexion / déconnexion / changement de pseudo).
   useEffect(() => {
-    if (!pseudo) return;
+    if (!user && !pseudo) return;
     const socket: AppSocket = io({
-      auth: { guestId: getGuestId(), displayName: pseudo },
+      withCredentials: true,
+      auth: user
+        ? { displayName: user.displayName }
+        : { guestId: getGuestId(), displayName: pseudo },
     });
     socketRef.current = socket;
 
@@ -73,8 +81,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.disconnect();
       socketRef.current = null;
       setConnected(false);
+      setRoomView(null);
+      setGameView(null);
     };
-  }, [pseudo]);
+    // Clé d'identité : reconnecte si le compte ou le pseudo invité change.
+  }, [user?.id, pseudo]);
 
   const setPseudo = useCallback((name: string) => {
     storePseudo(name);

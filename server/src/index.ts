@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { Server } from 'socket.io';
 import type {
   ClientToServerEvents,
@@ -9,12 +10,17 @@ import type {
 } from '@kuhhandel/shared';
 import { config } from './config';
 import { registerSocketHandlers } from './socket';
+import { authRouter } from './authRoutes';
 
 const app = express();
+app.use(express.json());
+app.use(cookieParser());
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', env: config.nodeEnv });
 });
+
+app.use('/api/auth', authRouter);
 
 // En production, le serveur sert aussi le client compilé (même origine).
 if (config.isProd) {

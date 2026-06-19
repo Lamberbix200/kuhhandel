@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../socket';
+import { useAuth } from '../auth';
 import { Button, Card, Spinner } from '../ui';
 
 export function Home() {
@@ -15,10 +16,12 @@ export function Home() {
     createRoom,
     joinRoom,
   } = useSocket();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [roomName, setRoomName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const displayName = user?.displayName ?? pseudo;
 
   useEffect(() => {
     subscribeLobby();
@@ -58,13 +61,22 @@ export function Home() {
             className={`inline-block h-2 w-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`}
             title={connected ? 'Connecté' : 'Déconnecté'}
           />
-          <span className="text-parchment/80">{pseudo}</span>
-          <button
-            onClick={() => setPseudo('')}
-            className="text-parchment/50 underline-offset-2 hover:underline"
-          >
-            changer
-          </button>
+          <span className="text-parchment/80">{displayName}</span>
+          {user ? (
+            <button
+              onClick={() => logout()}
+              className="text-parchment/50 underline-offset-2 hover:underline"
+            >
+              déconnexion
+            </button>
+          ) : (
+            <button
+              onClick={() => setPseudo('')}
+              className="text-parchment/50 underline-offset-2 hover:underline"
+            >
+              changer
+            </button>
+          )}
         </div>
       </header>
 
@@ -85,7 +97,7 @@ export function Home() {
           <input
             value={roomName}
             onChange={(e) => setRoomName(e.target.value)}
-            placeholder={`Salon de ${pseudo}`}
+            placeholder={`Salon de ${displayName}`}
             maxLength={30}
             className="mb-3 w-full rounded-lg bg-parchment px-3 py-2 text-felt-900 placeholder:text-felt-900/40 focus:outline-none focus:ring-2 focus:ring-brass-500"
           />

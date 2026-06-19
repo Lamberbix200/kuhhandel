@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
+import { AuthProvider } from './auth';
 import { SocketProvider } from './socket';
 import './index.css';
 
@@ -11,9 +12,11 @@ if (!root) throw new Error('Élément #root introuvable.');
 createRoot(root).render(
   <StrictMode>
     <BrowserRouter>
-      <SocketProvider>
-        <App />
-      </SocketProvider>
+      <AuthProvider>
+        <SocketProvider>
+          <App />
+        </SocketProvider>
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 );

@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSocket } from './socket';
-import { PseudoGate } from './screens/PseudoGate';
+import { useAuth } from './auth';
+import { AuthGate } from './screens/AuthGate';
 import { Home } from './screens/Home';
 import { Room } from './screens/Room';
+import { Spinner } from './ui';
 
 function ErrorToast() {
   const { error, clearError } = useSocket();
@@ -28,18 +30,24 @@ function ErrorToast() {
 
 export function App() {
   const { pseudo } = useSocket();
+  const { user, loading } = useAuth();
+  const authenticated = !!user || !!pseudo;
 
   return (
     <div className="min-h-full bg-gradient-to-b from-felt-700 to-felt-900 text-parchment">
       <ErrorToast />
-      {pseudo ? (
+      {loading ? (
+        <div className="flex min-h-screen items-center justify-center">
+          <Spinner />
+        </div>
+      ) : authenticated ? (
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/room/:code" element={<Room />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       ) : (
-        <PseudoGate />
+        <AuthGate />
       )}
     </div>
   );

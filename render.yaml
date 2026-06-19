@@ -1,0 +1,44 @@
+# Blueprint Render — un seul Web Service (Node) qui sert le client compilé,
+# l'API et les WebSockets, branché sur une base Postgres Render.
+#
+# Déploiement : sur https://dashboard.render.com → New + → Blueprint → ce repo.
+# Render lit ce fichier, crée la base puis le service, et injecte DATABASE_URL.
+#
+# Notes plan gratuit : le service s'endort après ~15 min d'inactivité (démarrage
+# à froid ~50 s, et les WebSockets se coupent à l'endormissement) ; la base
+# gratuite expire après ~90 jours. Pour une vraie partie continue, passer le
+# service en plan payant « Starter ».
+
+databases:
+  - name: kuhhandel-db
+    databaseName: kuhhandel
+    user: kuhhandel
+    plan: free
+    region: frankfurt
+
+services:
+  - type: web
+    name: kuhhandel
+    runtime: node
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    # --include=dev : les outils de build (vite, prisma, typescript) sont en
+    # devDependencies et Render met NODE_ENV=production, qui les exclurait sinon.
+    buildCommand: >-
+      npm ci --include=dev &&
+      npm run db:generate --workspace @kuhhandel/server &&
+      npm run db:deploy --workspace @kuhhandel/server &&
+      npm run build --workspace @kuhhandel/client
+    startCommand: npm run start --workspace @kuhhandel/server
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: '20'
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kuhhandel-db
+          property: connectionString

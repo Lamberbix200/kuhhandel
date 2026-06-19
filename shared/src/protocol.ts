@@ -42,6 +42,23 @@ export interface RoomView {
 /** Réponse standardisée d'un accusé de réception (ack). */
 export type Ack<T> = ({ ok: true } & T) | { ok: false; error: string };
 
+export interface ChatTextMsg {
+  from: string;
+  text: string;
+  ts: number;
+}
+
+export interface ChatAudioMsg {
+  from: string;
+  /** Contenu audio brut (webm/opus ou mp4/aac selon le navigateur). */
+  audio: ArrayBuffer;
+  ts: number;
+}
+
+export type ChatEntry =
+  | ({ kind: 'text' } & ChatTextMsg)
+  | ({ kind: 'audio' } & ChatAudioMsg);
+
 export interface ServerToClientEvents {
   'lobby:rooms': (rooms: RoomSummary[]) => void;
   'room:state': (room: RoomView) => void;
@@ -49,6 +66,8 @@ export interface ServerToClientEvents {
   'game:view': (view: PlayerView) => void;
   /** Erreur non bloquante (coup illégal, etc.) destinée au joueur fautif. */
   'error:msg': (message: string) => void;
+  'chat:message': (msg: ChatTextMsg) => void;
+  'chat:audio': (msg: ChatAudioMsg) => void;
 }
 
 export interface ClientToServerEvents {
@@ -59,6 +78,8 @@ export interface ClientToServerEvents {
   'room:leave': () => void;
   'room:start': () => void;
   'game:action': (action: GameAction) => void;
+  'chat:message': (payload: { text: string }) => void;
+  'chat:audio': (payload: { audio: ArrayBuffer }) => void;
 }
 
 /** Données transmises au handshake (identité). Invité aujourd'hui, JWT demain. */

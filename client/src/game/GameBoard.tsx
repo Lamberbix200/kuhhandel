@@ -100,7 +100,16 @@ function BidControls({ view }: { view: PlayerView }) {
   }, [a.highestBid]);
 
   const canAfford = max >= min;
+  const isLeading = a.highestBidderId === view.you.id;
   const valid = amount >= min && amount <= max && amount % BID_INCREMENT === 0;
+
+  if (isLeading) {
+    return (
+      <p className="text-center text-sm text-brass-500 font-semibold">
+        Tu mènes avec {a.highestBid} — en attente des autres joueurs…
+      </p>
+    );
+  }
 
   if (!canAfford) {
     return (

@@ -332,6 +332,7 @@ export function applyAction(prev: GameState, actorId: string, action: GameAction
       if (state.phase !== 'auction' || !state.auction) fail("Aucune enchère en cours.");
       const a = state.auction;
       if (actorId === leader(state).id) fail("Le meneur ne peut pas miser.");
+      if (actorId === a.highestBidderId) fail('Tu es déjà le meilleur enchérisseur.');
       const bidder = playerById(state, actorId);
       if (!bidder.connected) fail('Joueur déconnecté.');
       if (action.amount % BID_INCREMENT !== 0) fail(`Les mises sont des multiples de ${BID_INCREMENT}.`);

@@ -9,9 +9,15 @@
     "client"
   ],
   "scripts": {
-    "test": "npm run test --workspace @kuhhandel/shared",
+    "dev": "concurrently -n server,client -c green,cyan \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm run dev --workspace @kuhhandel/server",
+    "dev:client": "npm run dev --workspace @kuhhandel/client",
+    "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
   },
   "engines": {
     "node": ">=20"

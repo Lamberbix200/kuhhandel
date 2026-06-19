@@ -40,6 +40,9 @@ export const MAX_PLAYERS = 5;
 /** Pas minimal d'une enchère. */
 export const BID_INCREMENT = 10;
 
+/** Durée (s) du compte à rebours d'une enchère ; réinitialisée à chaque mise. */
+export const AUCTION_SECONDS = 10;
+
 /** Liasse vide (0 carte de chaque valeur). */
 export function emptyMoney(): Money {
   return { 0: 0, 10: 0, 50: 0, 100: 0, 200: 0, 500: 0 };

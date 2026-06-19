@@ -130,13 +130,28 @@ select {
   animation: kh-bob 2.4s ease-in-out infinite;
 }
 
+@keyframes kh-result {
+  0% {
+    transform: translateY(-24px) scale(0.96);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.kh-result {
+  animation: kh-result 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kh-flip,
   .kh-pop,
   .kh-deal,
   .kh-shake,
   .kh-stamp,
-  .kh-bob {
+  .kh-bob,
+  .kh-result {
     animation: none;
   }
 }

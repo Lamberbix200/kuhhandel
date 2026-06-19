@@ -10,6 +10,7 @@ import {
   buildAnimalDeck,
   cloneMoney,
   emptyAnimals,
+  moneyCardCount,
   moneyContains,
   moneyValue,
   scorePlayer,
@@ -66,6 +67,25 @@ export interface PendingPayment {
   count: number;
 }
 
+/**
+ * Événement marquant de fin d'action, projeté aux clients pour un affichage
+ * animé et lisible. Les valeurs de marchandage ne sont révélées qu'aux deux
+ * participants (mises à null pour les autres dans `viewFor`).
+ */
+export type GameEvent =
+  | { kind: 'auction'; animal: AnimalId; winnerId: string; price: number; preempt: boolean; free: boolean }
+  | {
+      kind: 'trade';
+      animal: AnimalId;
+      count: number;
+      initiatorId: string;
+      targetId: string;
+      initiatorValue: number | null;
+      targetValue: number | null;
+      winnerId: string;
+      free: boolean;
+    };
+
 export interface GameState {
   phase: GamePhase;
   players: PlayerState[];
@@ -81,6 +101,10 @@ export interface GameState {
   pendingPayment: PendingPayment | null;
   log: string[];
   winnerIds: string[] | null;
+  /** Dernier résultat marquant (enchère/marchandage), pour l'affichage animé. */
+  lastEvent: (GameEvent & { seq: number }) | null;
+  /** Compteur monotone d'événements (le client n'affiche que les nouveaux). */
+  eventSeq: number;
 }
 
 export type GameAction =
@@ -140,6 +164,8 @@ export function createGame(players: { id: string; name: string }[]): GameState {
     pendingPayment: null,
     log: [],
     winnerIds: null,
+    lastEvent: null,
+    eventSeq: 0,
   };
 }
 
@@ -229,10 +255,17 @@ function closeAuction(state: GameState): void {
     const me = leader(state);
     me.animals[a.animal]++;
     state.log.push(`${me.name} emporte ${ANIMAL_BY_ID[a.animal].name} gratuitement.`);
+    setEvent(state, { kind: 'auction', animal: a.animal, winnerId: me.id, price: 0, preempt: false, free: true });
     advanceTurn(state);
   } else {
     state.phase = 'auction_decision';
   }
+}
+
+/** Enregistre le dernier événement marquant (incrémente le compteur). */
+function setEvent(state: GameState, event: GameEvent): void {
+  state.eventSeq += 1;
+  state.lastEvent = { ...event, seq: state.eventSeq };
 }
 
 /** Distribue à chaque joueur une carte de l'âne n°(index+1) depuis la réserve. */
@@ -383,6 +416,14 @@ export function applyAction(prev: GameState, actorId: string, action: GameAction
       state.log.push(
         `${cardTo.name} obtient ${ANIMAL_BY_ID[pp.animal].name} pour ${moneyValue(action.payment)}.`,
       );
+      setEvent(state, {
+        kind: 'auction',
+        animal: pp.animal,
+        winnerId: pp.cardToId,
+        price: pp.amount,
+        preempt: pp.cardToId === leader(state).id,
+        free: false,
+      });
       advanceTurn(state);
       return state;
     }
@@ -425,6 +466,17 @@ export function applyAction(prev: GameState, actorId: string, action: GameAction
       transferAnimals(target, initiator, t.animal, t.count);
       target.money = addMoney(target.money, t.initiatorOffer);
       state.log.push(`${target.name} accepte : ${initiator.name} obtient ${ANIMAL_BY_ID[t.animal].name}.`);
+      setEvent(state, {
+        kind: 'trade',
+        animal: t.animal,
+        count: t.count,
+        initiatorId: t.initiatorId,
+        targetId: t.targetId,
+        initiatorValue: moneyValue(t.initiatorOffer),
+        targetValue: null,
+        winnerId: t.initiatorId,
+        free: false,
+      });
       advanceTurn(state);
       return state;
     }
@@ -451,6 +503,17 @@ export function applyAction(prev: GameState, actorId: string, action: GameAction
           // Seconde égalité : la cible cède gratuitement.
           transferAnimals(target, initiator, t.animal, t.count);
           state.log.push(`Double égalité : ${target.name} cède ${ANIMAL_BY_ID[t.animal].name} gratuitement.`);
+          setEvent(state, {
+            kind: 'trade',
+            animal: t.animal,
+            count: t.count,
+            initiatorId: t.initiatorId,
+            targetId: t.targetId,
+            initiatorValue: va,
+            targetValue: vb,
+            winnerId: t.initiatorId,
+            free: true,
+          });
           advanceTurn(state);
         } else {
           t.isReoffer = true;
@@ -473,6 +536,17 @@ export function applyAction(prev: GameState, actorId: string, action: GameAction
         transferAnimals(initiator, target, t.animal, t.count);
         state.log.push(`${target.name} l'emporte et conserve ${ANIMAL_BY_ID[t.animal].name}.`);
       }
+      setEvent(state, {
+        kind: 'trade',
+        animal: t.animal,
+        count: t.count,
+        initiatorId: t.initiatorId,
+        targetId: t.targetId,
+        initiatorValue: va,
+        targetValue: vb,
+        winnerId: initiatorWins ? t.initiatorId : t.targetId,
+        free: false,
+      });
       advanceTurn(state);
       return state;
     }
@@ -537,16 +611,27 @@ export interface PlayerView {
   trade: (Omit<TradeState, 'initiatorOffer' | 'targetOffer'> & {
     hasInitiatorOffer: boolean;
     hasTargetOffer: boolean;
+    /** Nombre de cartes posées par l'initiateur (valeur cachée — le bluff porte dessus). */
+    initiatorOfferCount: number;
+    targetOfferCount: number;
   }) | null;
   pendingPayment: PendingPayment | null;
   log: string[];
   winnerIds: string[] | null;
+  /** Dernier événement marquant à afficher (valeurs masquées aux non-participants). */
+  lastEvent: (GameEvent & { seq: number }) | null;
 }
 
 /** Projette l'état complet vers la vue d'un joueur (information cachée masquée). */
 export function viewFor(state: GameState, playerId: string): PlayerView {
   const you = state.players.find((p) => p.id === playerId);
   if (!you) fail('Joueur absent de la partie.');
+  const ev = state.lastEvent;
+  // Les montants d'un marchandage ne sont révélés qu'aux deux participants.
+  const lastEvent =
+    ev && ev.kind === 'trade' && playerId !== ev.initiatorId && playerId !== ev.targetId
+      ? { ...ev, initiatorValue: null, targetValue: null }
+      : ev;
   return {
     phase: state.phase,
     you: structuredClone(you),
@@ -570,10 +655,13 @@ export function viewFor(state: GameState, playerId: string): PlayerView {
           isReoffer: state.trade.isReoffer,
           hasInitiatorOffer: state.trade.initiatorOffer !== null,
           hasTargetOffer: state.trade.targetOffer !== null,
+          initiatorOfferCount: state.trade.initiatorOffer ? moneyCardCount(state.trade.initiatorOffer) : 0,
+          targetOfferCount: state.trade.targetOffer ? moneyCardCount(state.trade.targetOffer) : 0,
         }
       : null,
     pendingPayment: state.pendingPayment,
     log: state.log,
     winnerIds: state.winnerIds,
+    lastEvent,
   };
 }

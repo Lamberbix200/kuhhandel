@@ -4,7 +4,7 @@
 // Des vraies voix d'animaux (CC0) pourront être déposées plus tard dans
 // `client/public/sounds/<animal>.mp3` et préférées si présentes (voir playAnimal).
 
-import { ANIMAL_BY_ID } from '@kuhhandel/shared';
+import { ANIMALS, ANIMAL_BY_ID } from '@kuhhandel/shared';
 import type { AnimalId } from '@kuhhandel/shared';
 
 const MUTE_KEY = 'kh_muted';
@@ -34,6 +34,36 @@ function getCtx(): AudioContext | null {
 export function unlockAudio(): void {
   const c = getCtx();
   if (c && c.state === 'suspended') void c.resume();
+}
+
+/* ----------------------- Vraies voix d'animaux (fichiers) ----------------------- */
+// Fichiers optionnels dans client/public/sounds/<id>.<ext>, décodés via Web Audio
+// (ogg/mp3/webm lus par Chrome/Edge/Firefox). Repli synthétisé si absent.
+const animalBuffers = new Map<AnimalId, AudioBuffer>();
+const triedLoad = new Set<AnimalId>();
+const SOUND_EXTS = ['mp3', 'ogg', 'webm'];
+
+async function loadAnimalSound(id: AnimalId): Promise<void> {
+  if (triedLoad.has(id)) return;
+  triedLoad.add(id);
+  const c = getCtx();
+  if (!c) return;
+  for (const ext of SOUND_EXTS) {
+    try {
+      const res = await fetch(`/sounds/${id}.${ext}`);
+      if (!res.ok) continue;
+      const data = await res.arrayBuffer();
+      animalBuffers.set(id, await c.decodeAudioData(data));
+      return;
+    } catch {
+      /* on tente le format suivant */
+    }
+  }
+}
+
+/** Précharge les voix d'animaux disponibles (appelé au 1er geste utilisateur). */
+export function preloadAnimalSounds(): void {
+  for (const a of ANIMALS) void loadAnimalSound(a.id);
 }
 
 export function isMuted(): boolean {
@@ -146,6 +176,18 @@ export function flip(): void {
  * dont la hauteur dépend de la taille de l'animal (gros = grave, petit = aigu).
  */
 export function playAnimal(id: AnimalId): void {
+  const c = getCtx();
+  const buffer = animalBuffers.get(id);
+  if (c && !muted && buffer) {
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    const g = c.createGain();
+    g.gain.value = 0.9;
+    src.connect(g).connect(c.destination);
+    src.start();
+    return;
+  }
+  if (!buffer) void loadAnimalSound(id); // tentera de le charger pour la prochaine fois
   const value = ANIMAL_BY_ID[id]?.value ?? 100;
   const base = 760 - (value / 1000) * 520; // 10 pts -> ~755 Hz, 1000 pts -> ~240 Hz
   tone({ freq: base, dur: 0.28, type: 'sawtooth', gain: 0.16, freqEnd: base * 0.7 });
@@ -169,6 +211,7 @@ export function womp(): void {
 if (typeof window !== 'undefined') {
   const unlock = (): void => {
     unlockAudio();
+    preloadAnimalSounds();
     window.removeEventListener('pointerdown', unlock);
     window.removeEventListener('keydown', unlock);
   };

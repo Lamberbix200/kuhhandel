@@ -1,5 +1,5 @@
 import type { Server, Socket } from 'socket.io';
-import { GameError } from '@kuhhandel/shared';
+import { AUCTION_SECONDS, GameError } from '@kuhhandel/shared';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -9,7 +9,7 @@ import { RoomError, RoomManager, type Room } from './rooms';
 
 const LOBBY = 'lobby';
 /** Durée du compte à rebours d'une enchère, réinitialisée à chaque mise. */
-const AUCTION_MS = 5_000;
+const AUCTION_MS = AUCTION_SECONDS * 1000;
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
 type ClientSocket = Socket<ClientToServerEvents, ServerToClientEvents> & {
@@ -161,7 +161,7 @@ export function registerSocketHandlers(io: IO): RoomManager {
       try {
         const room = manager.applyGameAction(identity.userId, action);
         // Synchronise le minuteur d'enchère avec la nouvelle phase :
-        // - ouverture d'enchère ou nouvelle mise -> (re)lance les 5 s ;
+        // - ouverture d'enchère ou nouvelle mise -> (re)lance le compte à rebours ;
         // - toute autre issue (clôture, paiement…) -> arrête le minuteur.
         if (room.game?.phase === 'auction' && (action.type === 'CHOOSE_AUCTION' || action.type === 'BID')) {
           startAuctionTimer(room);

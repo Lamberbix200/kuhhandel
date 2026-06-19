@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AUCTION_SECONDS } from '@kuhhandel/shared';
 import { tick, tickUrgent } from '../sound';
 
 /**
@@ -6,7 +7,7 @@ import { tick, tickUrgent } from '../sound';
  * tic-tac sonore (plus pressant sur les 3 dernières secondes). Piloté par
  * l'horodatage de fin envoyé par le serveur ; chaque mise le réinitialise.
  */
-export function Countdown({ endsAt, durationMs = 5000 }: { endsAt: number; durationMs?: number }) {
+export function Countdown({ endsAt, durationMs = AUCTION_SECONDS * 1000 }: { endsAt: number; durationMs?: number }) {
   const [remaining, setRemaining] = useState(() => Math.max(0, endsAt - Date.now()));
   const lastSecRef = useRef(Math.ceil(Math.max(0, endsAt - Date.now()) / 1000));
 

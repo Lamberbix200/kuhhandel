@@ -7,6 +7,7 @@ import { Button, Card } from '../ui';
 import { MoneyPicker } from './MoneyPicker';
 import { AnimalCard, CardBack, MoneyCard } from './cards';
 import { Countdown } from './Countdown';
+import { EventBanner } from './EventBanner';
 import * as sound from '../sound';
 
 /** Score à partir des seules familles complètes (l'argent ne compte pas). */
@@ -321,10 +322,17 @@ function ActionArea({ view }: { view: PlayerView }) {
           <div className="space-y-3">
             <p className="text-center text-sm">
               {nameOf(view, t.initiatorId)} veut t'acheter <b>{a.name}</b>
-              {t.count > 1 && ` (×${t.count})`} et a posé une offre secrète.
+              {t.count > 1 && ` (×${t.count})`}.
             </p>
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-2">
               <AnimalCard id={t.animal} size="md" count={t.count} />
+              <p className="text-sm text-parchment/70">
+                Il·elle a posé{' '}
+                <b className="text-brass-500">
+                  {t.initiatorOfferCount} carte{t.initiatorOfferCount !== 1 ? 's' : ''}
+                </b>{' '}
+                face cachée.
+              </p>
             </div>
             <TradeResponse view={view} />
           </div>
@@ -461,6 +469,15 @@ function useGameSounds(view: PlayerView | null): void {
       }
       if (p.phase === 'auction' && view.phase === 'auction_decision') sound.sold();
       if (moneyValue(view.you.money) > moneyValue(p.you.money)) sound.coin();
+      // Son sur résultat de marchandage
+      const ev = view.lastEvent;
+      if (ev && ev.seq !== p.lastEvent?.seq && ev.kind === 'trade') {
+        const isParticipant = ev.initiatorId === view.you.id || ev.targetId === view.you.id;
+        if (isParticipant) {
+          if (ev.winnerId === view.you.id) sound.fanfare();
+          else sound.womp();
+        }
+      }
       if (view.phase === 'finished' && p.phase !== 'finished') {
         if (view.winnerIds?.includes(view.you.id)) sound.fanfare();
         else sound.womp();
@@ -493,6 +510,7 @@ export function GameBoard() {
 
   return (
     <div className="mx-auto max-w-4xl px-3 py-4">
+      <EventBanner view={view} />
       {/* Barre d'état */}
       <header className="mb-3 flex items-center justify-between text-sm">
         <div className="flex items-center gap-3 text-parchment/70">

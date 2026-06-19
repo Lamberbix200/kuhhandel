@@ -81,7 +81,7 @@ function AuctionStage({ view }: { view: PlayerView }) {
         )}
       </div>
       {view.phase === 'auction' && view.auctionEndsAt != null && (
-        <Countdown endsAt={view.auctionEndsAt} />
+        <Countdown key={view.auctionEndsAt} endsAt={view.auctionEndsAt} />
       )}
     </div>
   );

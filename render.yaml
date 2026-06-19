@@ -30,7 +30,7 @@ services:
       npm run db:generate --workspace @kuhhandel/server &&
       npm run db:deploy --workspace @kuhhandel/server &&
       npm run build --workspace @kuhhandel/client
-    startCommand: npm run start --workspace @kuhhandel/server
+    startCommand: node_modules/.bin/tsx server/src/index.ts
     envVars:
       - key: NODE_ENV
         value: production

@@ -179,6 +179,21 @@ export function registerSocketHandlers(io: IO): RoomManager {
       }
     });
 
+    socket.on('chat:message', ({ text }) => {
+      const room = manager.getRoomOfUser(identity.userId);
+      if (!room) return;
+      const payload = { from: identity.displayName, text: String(text).slice(0, 300), ts: Date.now() };
+      for (const m of room.members) emitToUser(m.userId, 'chat:message', payload);
+    });
+
+    socket.on('chat:audio', ({ audio }) => {
+      const room = manager.getRoomOfUser(identity.userId);
+      if (!room) return;
+      if (audio.byteLength > 500_000) return;
+      const payload = { from: identity.displayName, audio, ts: Date.now() };
+      for (const m of room.members) emitToUser(m.userId, 'chat:audio', payload);
+    });
+
     socket.on('disconnect', () => {
       const set = userSockets.get(identity.userId);
       set?.delete(socket);

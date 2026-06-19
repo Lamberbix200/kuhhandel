@@ -6,6 +6,7 @@ import { useSocket } from '../socket';
 import { Button, Card } from '../ui';
 import { MoneyPicker } from './MoneyPicker';
 import { AnimalCard, CardBack, MoneyCard } from './cards';
+import { Chat } from './Chat';
 import { Countdown } from './Countdown';
 import { EventBanner } from './EventBanner';
 import * as sound from '../sound';
@@ -510,6 +511,22 @@ export function GameBoard() {
   const leader = view.players[view.leaderIndex];
   const isAuction = view.phase === 'auction' || view.phase === 'auction_decision';
 
+  const needsAction = (() => {
+    const { phase, auction, trade, pendingPayment } = view;
+    const amLeader = leader?.id === you.id;
+    if (phase === 'turn_start') return amLeader;
+    if (phase === 'auction' && auction) {
+      const isLeading = auction.highestBidderId === you.id;
+      const canAfford = moneyValue(you.money) >= auction.highestBid + BID_INCREMENT;
+      return !amLeader && !isLeading && canAfford;
+    }
+    if (phase === 'auction_decision') return amLeader;
+    if (phase === 'auction_payment') return pendingPayment?.payerId === you.id;
+    if (phase === 'trade_offer') return trade?.targetId === you.id;
+    if (phase === 'trade_reoffer') return trade?.initiatorId === you.id;
+    return false;
+  })();
+
   const toggleMute = () => {
     const next = !muted;
     sound.setMuted(next);
@@ -518,7 +535,7 @@ export function GameBoard() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-3 py-4">
+    <div className="kh-noselect mx-auto max-w-4xl px-3 py-4 touch-manipulation">
       <EventBanner view={view} />
       {/* Barre d'état */}
       <header className="mb-3 flex items-center justify-between text-sm">
@@ -565,7 +582,7 @@ export function GameBoard() {
       </div>
 
       {/* Zone d'action centrale */}
-      <Card className="mb-3 p-4">
+      <Card className={`mb-3 p-4${needsAction ? ' kh-pulse' : ''}`}>
         {isAuction && view.auction && <AuctionStage view={view} />}
         <ActionArea view={view} />
       </Card>
@@ -595,6 +612,7 @@ export function GameBoard() {
       )}
 
       {view.phase === 'finished' && <Results view={view} />}
+      <Chat />
     </div>
   );
 }

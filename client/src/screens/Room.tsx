@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSocket } from '../socket';
 import { Button, Card, Spinner } from '../ui';
+import { Chat } from '../game/Chat';
 import { GameBoard } from '../game/GameBoard';
 
 function WaitingRoom({ code }: { code: string }) {
@@ -27,7 +28,7 @@ function WaitingRoom({ code }: { code: string }) {
   };
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6">
+    <div className="kh-noselect mx-auto max-w-lg touch-manipulation px-4 py-6">
       <Card className="p-6">
         <div className="mb-4 text-center">
           <p className="text-sm text-parchment/60">{roomView.name}</p>
@@ -91,6 +92,7 @@ function WaitingRoom({ code }: { code: string }) {
           Quitter le salon
         </button>
       </Card>
+      <Chat />
     </div>
   );
 }

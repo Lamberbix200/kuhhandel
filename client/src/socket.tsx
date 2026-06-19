@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type {
+  ChatEntry,
   ClientToServerEvents,
   GameAction,
   PlayerView,
@@ -29,6 +30,7 @@ interface SocketContextValue {
   lobbyRooms: RoomSummary[];
   roomView: RoomView | null;
   gameView: PlayerView | null;
+  chatMessages: ChatEntry[];
   error: string | null;
   clearError: () => void;
   subscribeLobby: () => void;
@@ -38,6 +40,8 @@ interface SocketContextValue {
   leaveRoom: () => void;
   startGame: () => void;
   sendAction: (action: GameAction) => void;
+  sendChatMessage: (text: string) => void;
+  sendChatAudio: (audio: ArrayBuffer) => void;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -49,6 +53,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [lobbyRooms, setLobbyRooms] = useState<RoomSummary[]>([]);
   const [roomView, setRoomView] = useState<RoomView | null>(null);
   const [gameView, setGameView] = useState<PlayerView | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<AppSocket | null>(null);
 
@@ -72,9 +77,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socket.on('room:left', () => {
       setRoomView(null);
       setGameView(null);
+      setChatMessages([]);
     });
     socket.on('game:view', setGameView);
     socket.on('error:msg', (msg) => setError(msg));
+    socket.on('chat:message', (msg) => setChatMessages((prev) => [...prev, { kind: 'text', ...msg }]));
+    socket.on('chat:audio', (msg) => setChatMessages((prev) => [...prev, { kind: 'audio', ...msg }]));
 
     return () => {
       socket.removeAllListeners();
@@ -83,6 +91,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       setConnected(false);
       setRoomView(null);
       setGameView(null);
+      setChatMessages([]);
     };
     // Clé d'identité : reconnecte si le compte ou le pseudo invité change.
   }, [user?.id, pseudo]);
@@ -127,6 +136,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   const startGame = useCallback(() => socketRef.current?.emit('room:start'), []);
   const sendAction = useCallback((action: GameAction) => socketRef.current?.emit('game:action', action), []);
+  const sendChatMessage = useCallback((text: string) => socketRef.current?.emit('chat:message', { text }), []);
+  const sendChatAudio = useCallback((audio: ArrayBuffer) => socketRef.current?.emit('chat:audio', { audio }), []);
   const clearError = useCallback(() => setError(null), []);
 
   const value = useMemo<SocketContextValue>(
@@ -137,6 +148,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       lobbyRooms,
       roomView,
       gameView,
+      chatMessages,
       error,
       clearError,
       subscribeLobby,
@@ -146,6 +158,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       leaveRoom,
       startGame,
       sendAction,
+      sendChatMessage,
+      sendChatAudio,
     }),
     [
       connected,
@@ -154,6 +168,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       lobbyRooms,
       roomView,
       gameView,
+      chatMessages,
       error,
       clearError,
       subscribeLobby,
@@ -163,6 +178,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       leaveRoom,
       startGame,
       sendAction,
+      sendChatMessage,
+      sendChatAudio,
     ],
   );
 

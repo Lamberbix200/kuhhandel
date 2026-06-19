@@ -173,6 +173,21 @@ export class RoomManager {
     return room;
   }
 
+  /**
+   * Clôture l'enchère d'un salon (déclenchée par l'expiration du minuteur serveur).
+   * Action système : appliquée au nom du meneur, jamais à la demande d'un client.
+   * Renvoie undefined si le salon n'est plus en phase d'enchère (course bénigne).
+   */
+  resolveAuction(roomId: string): Room | undefined {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.game || room.game.phase !== 'auction') return undefined;
+    const leaderId = room.game.players[room.game.leaderIndex]?.id;
+    if (!leaderId) return undefined;
+    room.game = applyAction(room.game, leaderId, { type: 'RESOLVE_AUCTION' });
+    if (room.game.phase === 'finished') room.status = 'finished';
+    return room;
+  }
+
   toSummary(room: Room): RoomSummary {
     const host = room.members.find((m) => m.userId === room.hostId);
     return {

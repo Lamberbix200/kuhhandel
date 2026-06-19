@@ -88,6 +88,8 @@ export type GameAction =
   | { type: 'CHOOSE_AUCTION' }
   | { type: 'BID'; amount: number }
   | { type: 'PASS' }
+  /** Clôture de l'enchère déclenchée par le minuteur serveur (jamais par un client). */
+  | { type: 'RESOLVE_AUCTION' }
   | { type: 'AUCTION_DECISION'; preempt: boolean }
   | { type: 'PAY'; payment: Money }
   | { type: 'CHOOSE_TRADE'; targetId: string; animal: AnimalId; offer: Money }
@@ -215,6 +217,24 @@ function advanceTurn(state: GameState): void {
   state.phase = 'turn_start';
 }
 
+/**
+ * Clôt l'enchère en cours : si personne n'a misé, le meneur emporte la carte
+ * gratuitement ; sinon on passe à la décision de préemption du meneur.
+ * Appelé soit quand tous ont passé, soit à l'expiration du minuteur (RESOLVE_AUCTION).
+ */
+function closeAuction(state: GameState): void {
+  const a = state.auction;
+  if (!a) return;
+  if (a.highestBidderId === null) {
+    const me = leader(state);
+    me.animals[a.animal]++;
+    state.log.push(`${me.name} emporte ${ANIMAL_BY_ID[a.animal].name} gratuitement.`);
+    advanceTurn(state);
+  } else {
+    state.phase = 'auction_decision';
+  }
+}
+
 /** Distribue à chaque joueur une carte de l'âne n°(index+1) depuis la réserve. */
 function donkeyPayout(state: GameState, index: number): void {
   const denom = DONKEY_PAYOUTS[index] as Denomination | undefined;
@@ -303,17 +323,15 @@ export function applyAction(prev: GameState, actorId: string, action: GameAction
       const everyoneSettled = eligible.every(
         (p) => p.id === a.highestBidderId || a.passed.includes(p.id),
       );
-      if (everyoneSettled) {
-        if (a.highestBidderId === null) {
-          // Personne n'a misé : le meneur emporte la carte gratuitement.
-          const me = leader(state);
-          me.animals[a.animal]++;
-          state.log.push(`${me.name} emporte ${ANIMAL_BY_ID[a.animal].name} gratuitement.`);
-          advanceTurn(state);
-        } else {
-          state.phase = 'auction_decision';
-        }
-      }
+      if (everyoneSettled) closeAuction(state);
+      return state;
+    }
+
+    case 'RESOLVE_AUCTION': {
+      // Action système : déclenchée par l'expiration du minuteur serveur.
+      // Le dernier (meilleur) enchérisseur l'emporte ; le serveur la bloque côté client.
+      if (state.phase !== 'auction' || !state.auction) fail("Aucune enchère à clôturer.");
+      closeAuction(state);
       return state;
     }
 
@@ -510,6 +528,11 @@ export interface PlayerView {
   leaderIndex: number;
   donkeysDrawn: number;
   auction: AuctionState | null;
+  /**
+   * Horodatage serveur (epoch ms) de fin du compte à rebours de l'enchère, ou null.
+   * Ajouté par la couche serveur lors de la diffusion (hors moteur pur).
+   */
+  auctionEndsAt?: number | null;
   /** Marchandage en cours, offres scellées masquées. */
   trade: (Omit<TradeState, 'initiatorOffer' | 'targetOffer'> & {
     hasInitiatorOffer: boolean;

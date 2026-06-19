@@ -8,6 +8,8 @@ import { resolveIdentity, type Identity } from './identity';
 import { RoomError, RoomManager, type Room } from './rooms';
 
 const LOBBY = 'lobby';
+/** Durée du compte à rebours d'une enchère, réinitialisée à chaque mise. */
+const AUCTION_MS = 5_000;
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents>;
 type ClientSocket = Socket<ClientToServerEvents, ServerToClientEvents> & {
@@ -18,6 +20,8 @@ export function registerSocketHandlers(io: IO): RoomManager {
   const manager = new RoomManager();
   /** Sockets actifs par utilisateur (plusieurs onglets possibles). */
   const userSockets = new Map<string, Set<ClientSocket>>();
+  /** Minuteurs d'enchère par salon (clôture automatique + horodatage diffusé). */
+  const auctionTimers = new Map<string, { timeout: NodeJS.Timeout; endsAt: number }>();
 
   const socketsOf = (userId: string): ClientSocket[] => [...(userSockets.get(userId) ?? [])];
 
@@ -43,10 +47,40 @@ export function registerSocketHandlers(io: IO): RoomManager {
   /** Envoie à chaque membre sa vue de la partie (argent/offres masqués). */
   const broadcastGame = (room: Room): void => {
     if (!room.game) return;
+    const inAuction = room.game.phase === 'auction';
+    const endsAt = inAuction ? auctionTimers.get(room.id)?.endsAt ?? null : null;
     for (const m of room.members) {
       const view = manager.gameViewFor(room, m.userId);
-      if (view) emitToUser(m.userId, 'game:view', view);
+      if (view) {
+        view.auctionEndsAt = endsAt;
+        emitToUser(m.userId, 'game:view', view);
+      }
     }
+  };
+
+  const clearAuctionTimer = (roomId: string): void => {
+    const t = auctionTimers.get(roomId);
+    if (t) {
+      clearTimeout(t.timeout);
+      auctionTimers.delete(roomId);
+    }
+  };
+
+  /** (Re)lance le compte à rebours : à l'échéance, le dernier enchérisseur l'emporte. */
+  const startAuctionTimer = (room: Room): void => {
+    clearAuctionTimer(room.id);
+    const endsAt = Date.now() + AUCTION_MS;
+    const timeout = setTimeout(() => {
+      auctionTimers.delete(room.id);
+      const updated = manager.resolveAuction(room.id);
+      if (updated) {
+        broadcastGame(updated);
+        if (updated.status === 'finished') broadcastRoom(updated);
+      }
+    }, AUCTION_MS);
+    // Ne maintient pas à lui seul la boucle d'événements (tests, arrêt propre).
+    timeout.unref();
+    auctionTimers.set(room.id, { timeout, endsAt });
   };
 
   io.on('connection', (raw: Socket) => {
@@ -122,8 +156,18 @@ export function registerSocketHandlers(io: IO): RoomManager {
     });
 
     socket.on('game:action', (action) => {
+      // RESOLVE_AUCTION est une action système (minuteur) : un client ne peut pas la forcer.
+      if (action.type === 'RESOLVE_AUCTION') return;
       try {
         const room = manager.applyGameAction(identity.userId, action);
+        // Synchronise le minuteur d'enchère avec la nouvelle phase :
+        // - ouverture d'enchère ou nouvelle mise -> (re)lance les 5 s ;
+        // - toute autre issue (clôture, paiement…) -> arrête le minuteur.
+        if (room.game?.phase === 'auction' && (action.type === 'CHOOSE_AUCTION' || action.type === 'BID')) {
+          startAuctionTimer(room);
+        } else if (room.game?.phase !== 'auction') {
+          clearAuctionTimer(room.id);
+        }
         broadcastGame(room);
         if (room.status === 'finished') broadcastRoom(room);
       } catch (err) {

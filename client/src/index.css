@@ -34,3 +34,109 @@ button,
 select {
   font-size: 16px;
 }
+
+/* ------------------------------- Animations ------------------------------- */
+
+@keyframes kh-flip {
+  from {
+    transform: rotateY(90deg) scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: rotateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.kh-flip {
+  animation: kh-flip 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center;
+}
+
+@keyframes kh-pop {
+  0% {
+    transform: scale(1.5);
+    opacity: 0.4;
+  }
+  60% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.kh-pop {
+  animation: kh-pop 0.4s ease-out;
+}
+
+@keyframes kh-deal {
+  from {
+    transform: translateY(14px) rotate(-4deg);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) rotate(0);
+    opacity: 1;
+  }
+}
+.kh-deal {
+  animation: kh-deal 0.35s ease-out both;
+}
+
+@keyframes kh-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+.kh-shake {
+  animation: kh-shake 0.4s ease-in-out infinite;
+}
+
+@keyframes kh-stamp {
+  0% {
+    transform: scale(2.4) rotate(-18deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.9) rotate(-12deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(-12deg);
+    opacity: 1;
+  }
+}
+.kh-stamp {
+  animation: kh-stamp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes kh-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+.kh-bob {
+  animation: kh-bob 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kh-flip,
+  .kh-pop,
+  .kh-deal,
+  .kh-shake,
+  .kh-stamp,
+  .kh-bob {
+    animation: none;
+  }
+}

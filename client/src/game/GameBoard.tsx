@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AnimalId, Money, PlayerView, PublicPlayer } from '@kuhhandel/shared';
-import { ANIMALS, ANIMAL_BY_ID, BID_INCREMENT, DENOMINATIONS, moneyValue } from '@kuhhandel/shared';
+import { ANIMALS, ANIMAL_BY_ID, BID_INCREMENT, moneyValue } from '@kuhhandel/shared';
 import { useSocket } from '../socket';
 import { Button, Card } from '../ui';
 import { MoneyPicker } from './MoneyPicker';
+import { AnimalCard, CardBack, MoneyCard } from './cards';
+import { Countdown } from './Countdown';
+import * as sound from '../sound';
 
 /** Score à partir des seules familles complètes (l'argent ne compte pas). */
 function familiesScore(animals: Record<AnimalId, number>): number {
@@ -29,53 +32,55 @@ function tradeTargetsFor(view: PlayerView): { player: PublicPlayer; animals: Ani
     .filter((t) => t.animals.length > 0);
 }
 
-/** Animaux possédés (chips emoji ×count), familles complètes mises en valeur. */
-function AnimalsOwned({ animals }: { animals: Record<AnimalId, number> }) {
+/** Main d'animaux : une carte par famille possédée (avec compteur), familles complètes mises en valeur. */
+function AnimalsHand({ animals, size = 'md' }: { animals: Record<AnimalId, number>; size?: 'sm' | 'md' }) {
   const owned = ANIMALS.filter((a) => animals[a.id] > 0);
   if (owned.length === 0) return <span className="text-xs text-parchment/40">aucun animal</span>;
   return (
-    <div className="flex flex-wrap gap-1">
-      {owned.map((a) => {
-        const n = animals[a.id];
-        const complete = n === 4;
-        return (
-          <span
-            key={a.id}
-            title={`${a.name} (${a.value} pts) ×${n}`}
-            className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-sm ${
-              complete ? 'bg-brass-500/30 ring-1 ring-brass-500' : 'bg-felt-800/70'
-            }`}
-          >
-            <span className="text-base leading-none">{a.emoji}</span>
-            <span className="text-xs text-parchment/70">×{n}</span>
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Ta liasse d'argent (visible uniquement par toi). */
-function YourMoney({ money }: { money: Money }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {DENOMINATIONS.filter((d) => money[d] > 0).map((d) => (
-        <span key={d} className="rounded-md bg-parchment px-2 py-0.5 text-sm font-medium text-felt-900">
-          {d === 0 ? 'Bluff' : d} <span className="text-felt-900/50">×{money[d]}</span>
-        </span>
+    <div className="flex flex-wrap gap-1.5">
+      {owned.map((a) => (
+        <div key={a.id} className={animals[a.id] === 4 ? 'rounded-lg ring-2 ring-brass-500' : ''}>
+          <AnimalCard id={a.id} size={size} count={animals[a.id]} />
+        </div>
       ))}
-      <span className="ml-1 text-sm text-parchment/60">= {moneyValue(money)} en main</span>
     </div>
   );
 }
 
-function BigAnimal({ id }: { id: AnimalId }) {
-  const a = ANIMAL_BY_ID[id];
+/** Ta liasse d'argent en cartes (visible uniquement par toi). */
+function MoneyHand({ money }: { money: Money }) {
+  const present = ([0, 10, 50, 100, 200, 500] as const).filter((d) => money[d] > 0);
   return (
-    <div className="flex flex-col items-center">
-      <div className="text-6xl drop-shadow">{a.emoji}</div>
-      <div className="mt-1 font-display text-lg font-semibold">{a.name}</div>
-      <div className="text-xs text-parchment/60">famille = {a.value} pts</div>
+    <div className="flex items-end gap-1.5 overflow-x-auto pb-1">
+      {present.map((d) => (
+        <MoneyCard key={d} denom={d} size="md" count={money[d]} />
+      ))}
+      <span className="ml-1 shrink-0 self-center text-sm text-parchment/60">= {moneyValue(money)}</span>
+    </div>
+  );
+}
+
+/* ----------------------------- Scène d'enchère ----------------------------- */
+
+function AuctionStage({ view }: { view: PlayerView }) {
+  const a = view.auction!;
+  return (
+    <div className="mb-3 flex flex-col items-center gap-3">
+      <div className="relative">
+        <div key={a.animal} className="kh-flip" style={{ perspective: 600 }}>
+          <AnimalCard id={a.animal} size="lg" />
+        </div>
+        {view.phase === 'auction_decision' && (
+          <div className="kh-stamp pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="rounded-md border-4 border-red-600 px-2 py-0.5 font-display text-xl font-extrabold uppercase text-red-600">
+              Adjugé&nbsp;!
+            </span>
+          </div>
+        )}
+      </div>
+      {view.phase === 'auction' && view.auctionEndsAt != null && (
+        <Countdown endsAt={view.auctionEndsAt} />
+      )}
     </div>
   );
 }
@@ -96,54 +101,34 @@ function BidControls({ view }: { view: PlayerView }) {
   const canAfford = max >= min;
   const valid = amount >= min && amount <= max && amount % BID_INCREMENT === 0;
 
+  if (!canAfford) {
+    return (
+      <p className="text-center text-sm text-parchment/70">
+        Tu ne peux pas suivre (il faudrait au moins {min}). En attente de la fin du compte à rebours…
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-3">
-      {canAfford ? (
-        <>
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => setAmount((x) => Math.max(min, x - BID_INCREMENT))}
-              className="h-10 w-10 rounded-lg bg-felt-700 text-xl"
-            >
-              −
-            </button>
-            <span className="w-20 text-center font-display text-2xl font-bold text-brass-500">
-              {amount}
-            </span>
-            <button
-              onClick={() => setAmount((x) => Math.min(max, x + BID_INCREMENT))}
-              className="h-10 w-10 rounded-lg bg-felt-700 text-xl"
-            >
-              +
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              onClick={() => sendAction({ type: 'PASS' })}
-              className="flex-1"
-            >
-              Passer
-            </Button>
-            <Button
-              onClick={() => sendAction({ type: 'BID', amount })}
-              disabled={!valid}
-              className="flex-1"
-            >
-              Miser {amount}
-            </Button>
-          </div>
-        </>
-      ) : (
-        <div className="space-y-3 text-center">
-          <p className="text-sm text-parchment/70">
-            Tu ne peux pas suivre (il faudrait au moins {min}).
-          </p>
-          <Button variant="ghost" onClick={() => sendAction({ type: 'PASS' })} className="w-full">
-            Passer
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center justify-center gap-3">
+        <button
+          onClick={() => setAmount((x) => Math.max(min, x - BID_INCREMENT))}
+          className="h-11 w-11 rounded-lg bg-felt-700 text-2xl active:scale-95"
+        >
+          −
+        </button>
+        <span className="w-24 text-center font-display text-3xl font-bold text-brass-500">{amount}</span>
+        <button
+          onClick={() => setAmount((x) => Math.min(max, x + BID_INCREMENT))}
+          className="h-11 w-11 rounded-lg bg-felt-700 text-2xl active:scale-95"
+        >
+          +
+        </button>
+      </div>
+      <Button onClick={() => sendAction({ type: 'BID', amount })} disabled={!valid} className="w-full text-lg">
+        🔨 Miser {amount}
+      </Button>
     </div>
   );
 }
@@ -161,8 +146,7 @@ function TradeInitiator({ view, onCancel }: { view: PlayerView; onCancel: () => 
     return (
       <div className="space-y-3">
         <p className="text-center text-sm">
-          Offre secrète pour <b>{ANIMAL_BY_ID[animal].emoji} {ANIMAL_BY_ID[animal].name}</b> à{' '}
-          <b>{target.player.name}</b>
+          Offre secrète pour <b>{ANIMAL_BY_ID[animal].name}</b> à <b>{target.player.name}</b>
           {special && <span className="text-brass-500"> (marchandage double !)</span>}
         </p>
         <p className="text-center text-xs text-parchment/50">
@@ -185,12 +169,8 @@ function TradeInitiator({ view, onCancel }: { view: PlayerView; onCancel: () => 
         <p className="text-center text-sm">Quel animal veux-tu lui prendre ?</p>
         <div className="flex flex-wrap justify-center gap-2">
           {target.animals.map((id) => (
-            <button
-              key={id}
-              onClick={() => setAnimal(id)}
-              className="rounded-lg bg-felt-800/70 px-3 py-2 hover:bg-felt-700"
-            >
-              {ANIMAL_BY_ID[id].emoji} {ANIMAL_BY_ID[id].name}
+            <button key={id} onClick={() => setAnimal(id)} className="active:scale-95">
+              <AnimalCard id={id} size="md" />
             </button>
           ))}
         </div>
@@ -212,8 +192,10 @@ function TradeInitiator({ view, onCancel }: { view: PlayerView; onCancel: () => 
             className="flex w-full items-center justify-between rounded-lg bg-felt-800/70 px-3 py-2 hover:bg-felt-700"
           >
             <span>{t.player.name}</span>
-            <span className="text-sm text-parchment/60">
-              {t.animals.map((id) => ANIMAL_BY_ID[id].emoji).join(' ')}
+            <span className="flex gap-1">
+              {t.animals.map((id) => (
+                <AnimalCard key={id} id={id} size="sm" />
+              ))}
             </span>
           </button>
         ))}
@@ -237,19 +219,10 @@ function TurnStart({ view }: { view: PlayerView }) {
   return (
     <div className="space-y-2">
       <p className="text-center text-sm text-parchment/70">À toi de jouer !</p>
-      <Button
-        onClick={() => sendAction({ type: 'CHOOSE_AUCTION' })}
-        disabled={!canAuction}
-        className="w-full"
-      >
+      <Button onClick={() => sendAction({ type: 'CHOOSE_AUCTION' })} disabled={!canAuction} className="w-full">
         🔨 Lancer une enchère{!canAuction && ' (pioche vide)'}
       </Button>
-      <Button
-        variant="secondary"
-        onClick={() => setMode('trade')}
-        disabled={!canTrade}
-        className="w-full"
-      >
+      <Button variant="secondary" onClick={() => setMode('trade')} disabled={!canTrade} className="w-full">
         🤝 Proposer un marchandage{!canTrade && ' (impossible)'}
       </Button>
       {canPass && (
@@ -277,7 +250,6 @@ function ActionArea({ view }: { view: PlayerView }) {
 
     case 'auction': {
       const a = view.auction!;
-      const iPassed = a.passed.includes(you.id);
       return (
         <div className="space-y-3">
           <div className="text-center text-sm text-parchment/70">
@@ -285,9 +257,7 @@ function ActionArea({ view }: { view: PlayerView }) {
             {a.highestBidderId && <> par {nameOf(view, a.highestBidderId)}</>}
           </div>
           {amLeader ? (
-            <p className="text-center text-parchment/70">Tu mènes — en attente des mises…</p>
-          ) : iPassed ? (
-            <p className="text-center text-parchment/60">Tu as passé.</p>
+            <p className="text-center text-parchment/70">Tu mènes — le dernier enchérisseur l'emporte à la fin du chrono.</p>
           ) : (
             <BidControls view={view} />
           )}
@@ -307,13 +277,9 @@ function ActionArea({ view }: { view: PlayerView }) {
       return (
         <div className="space-y-2">
           <p className="text-center text-sm">
-            {nameOf(view, a.highestBidderId)} offre <b>{a.highestBid}</b> pour{' '}
-            {ANIMAL_BY_ID[a.animal].name}.
+            {nameOf(view, a.highestBidderId)} l'emporte avec <b>{a.highestBid}</b> pour {ANIMAL_BY_ID[a.animal].name}.
           </p>
-          <Button
-            onClick={() => sendAction({ type: 'AUCTION_DECISION', preempt: false })}
-            className="w-full"
-          >
+          <Button onClick={() => sendAction({ type: 'AUCTION_DECISION', preempt: false })} className="w-full">
             Encaisser {a.highestBid} et lui laisser
           </Button>
           <Button
@@ -331,11 +297,7 @@ function ActionArea({ view }: { view: PlayerView }) {
     case 'auction_payment': {
       const pp = view.pendingPayment!;
       if (pp.payerId !== you.id)
-        return (
-          <p className="text-center text-parchment/70">
-            {nameOf(view, pp.payerId)} règle son achat…
-          </p>
-        );
+        return <p className="text-center text-parchment/70">{nameOf(view, pp.payerId)} règle son achat…</p>;
       return (
         <div className="space-y-2">
           <p className="text-center text-sm">
@@ -358,9 +320,12 @@ function ActionArea({ view }: { view: PlayerView }) {
         return (
           <div className="space-y-3">
             <p className="text-center text-sm">
-              {nameOf(view, t.initiatorId)} veut t'acheter <b>{a.emoji} {a.name}</b>
+              {nameOf(view, t.initiatorId)} veut t'acheter <b>{a.name}</b>
               {t.count > 1 && ` (×${t.count})`} et a posé une offre secrète.
             </p>
+            <div className="flex justify-center">
+              <AnimalCard id={t.animal} size="md" count={t.count} />
+            </div>
             <TradeResponse view={view} />
           </div>
         );
@@ -434,20 +399,25 @@ function Results({ view }: { view: PlayerView }) {
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
       <Card className="w-full max-w-md p-6 text-center">
-        <div className="text-5xl">🏆</div>
+        <div className="text-5xl kh-bob">🏆</div>
         <h2 className="mb-4 font-display text-2xl font-bold text-brass-500">Partie terminée !</h2>
         <ol className="mb-5 space-y-1.5 text-left">
           {ranking.map(({ p, score }, i) => (
             <li
               key={p.id}
-              className={`flex items-center justify-between rounded-lg px-3 py-2 ${
+              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 ${
                 view.winnerIds?.includes(p.id) ? 'bg-brass-500/25 ring-1 ring-brass-500' : 'bg-felt-800/60'
               }`}
             >
-              <span>
+              <span className="shrink-0">
                 {i + 1}. {p.name} {p.id === view.you.id && '(toi)'}
               </span>
-              <b>{score} pts</b>
+              <span className="flex flex-1 justify-end gap-1 overflow-hidden">
+                {ANIMALS.filter((a) => p.animals[a.id] === 4).map((a) => (
+                  <AnimalCard key={a.id} id={a.id} size="sm" />
+                ))}
+              </span>
+              <b className="shrink-0">{score} pts</b>
             </li>
           ))}
         </ol>
@@ -465,33 +435,87 @@ function Results({ view }: { view: PlayerView }) {
   );
 }
 
+/* --------------------------- Sons réactifs (diff) --------------------------- */
+
+function useGameSounds(view: PlayerView | null): void {
+  const prev = useRef<PlayerView | null>(null);
+  useEffect(() => {
+    const p = prev.current;
+    if (view && p) {
+      const newCard =
+        view.phase === 'auction' &&
+        view.auction &&
+        (p.phase !== 'auction' || p.auction?.animal !== view.auction.animal);
+      if (newCard && view.auction) {
+        sound.flip();
+        sound.playAnimal(view.auction.animal);
+      }
+      if (
+        view.phase === 'auction' &&
+        p.phase === 'auction' &&
+        view.auction &&
+        p.auction &&
+        view.auction.highestBid > p.auction.highestBid
+      ) {
+        sound.bid();
+      }
+      if (p.phase === 'auction' && view.phase === 'auction_decision') sound.sold();
+      if (moneyValue(view.you.money) > moneyValue(p.you.money)) sound.coin();
+      if (view.phase === 'finished' && p.phase !== 'finished') {
+        if (view.winnerIds?.includes(view.you.id)) sound.fanfare();
+        else sound.womp();
+      }
+    }
+    prev.current = view;
+  }, [view]);
+}
+
 /* --------------------------------- Plateau --------------------------------- */
 
 export function GameBoard() {
   const { gameView: view, leaveRoom } = useSocket();
   const navigate = useNavigate();
+  const [muted, setMutedState] = useState(sound.isMuted());
+  useGameSounds(view);
+
   if (!view) return null;
 
   const you = view.you;
   const leader = view.players[view.leaderIndex];
+  const isAuction = view.phase === 'auction' || view.phase === 'auction_decision';
+
+  const toggleMute = () => {
+    const next = !muted;
+    sound.setMuted(next);
+    setMutedState(next);
+    if (!next) sound.unlockAudio();
+  };
 
   return (
     <div className="mx-auto max-w-4xl px-3 py-4">
       {/* Barre d'état */}
       <header className="mb-3 flex items-center justify-between text-sm">
         <div className="flex items-center gap-3 text-parchment/70">
-          <span>🃏 pioche {view.deckCount}</span>
-          <span>🫏 ânes {view.donkeysDrawn}/4</span>
+          <span className="flex items-center gap-1.5">
+            <CardBack size="sm" count={view.deckCount} />
+            <span className="hidden sm:inline">pioche</span>
+          </span>
+          <span>🫏 {view.donkeysDrawn}/4</span>
         </div>
-        <button
-          onClick={() => {
-            leaveRoom();
-            navigate('/');
-          }}
-          className="text-parchment/50 hover:underline"
-        >
-          Quitter
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={toggleMute} className="text-lg" title={muted ? 'Activer le son' : 'Couper le son'}>
+            {muted ? '🔇' : '🔊'}
+          </button>
+          <button
+            onClick={() => {
+              leaveRoom();
+              navigate('/');
+            }}
+            className="text-parchment/50 hover:underline"
+          >
+            Quitter
+          </button>
+        </div>
       </header>
 
       {/* Adversaires */}
@@ -504,20 +528,18 @@ export function GameBoard() {
                 <span className={`h-2 w-2 rounded-full ${p.connected ? 'bg-green-400' : 'bg-stone-500'}`} />
                 <span className="font-medium">{p.name}</span>
                 {leader?.id === p.id && <span className="text-xs text-brass-500">meneur</span>}
-                <span className="ml-auto text-xs text-parchment/50">💰 {p.moneyCardCount} cartes</span>
+                <span className="ml-auto rounded bg-felt-800/80 px-1.5 py-0.5 text-xs text-parchment/70">
+                  💰 {p.moneyCardCount}
+                </span>
               </div>
-              <AnimalsOwned animals={p.animals} />
+              <AnimalsHand animals={p.animals} size="sm" />
             </Card>
           ))}
       </div>
 
       {/* Zone d'action centrale */}
       <Card className="mb-3 p-4">
-        {(view.phase === 'auction' || view.phase === 'auction_decision') && view.auction && (
-          <div className="mb-3 flex justify-center">
-            <BigAnimal id={view.auction.animal} />
-          </div>
-        )}
+        {isAuction && view.auction && <AuctionStage view={view} />}
         <ActionArea view={view} />
       </Card>
 
@@ -528,9 +550,9 @@ export function GameBoard() {
           {leader?.id === you.id && <span className="text-xs text-brass-500">meneur</span>}
         </div>
         <div className="mb-2">
-          <AnimalsOwned animals={you.animals} />
+          <AnimalsHand animals={you.animals} />
         </div>
-        <YourMoney money={you.money} />
+        <MoneyHand money={you.money} />
       </Card>
 
       {/* Journal */}

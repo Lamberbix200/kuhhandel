@@ -157,6 +157,33 @@ describe('enchère', () => {
     s = applyAction(s, 'p2', { type: 'PASS' });
     expect(s.phase).toBe('auction_decision');
   });
+
+  it('RESOLVE_AUCTION (minuteur) avec une mise -> décision du meneur', () => {
+    let s = started();
+    s.deck = ['cow'];
+    s = applyAction(s, 'p0', { type: 'CHOOSE_AUCTION' });
+    s = applyAction(s, 'p1', { type: 'BID', amount: 40 });
+    // Personne ne passe : c'est le minuteur qui clôt.
+    s = applyAction(s, 'p0', { type: 'RESOLVE_AUCTION' });
+    expect(s.phase).toBe('auction_decision');
+    expect(s.auction?.highestBidderId).toBe('p1');
+  });
+
+  it('RESOLVE_AUCTION (minuteur) sans mise -> le meneur emporte gratuitement', () => {
+    let s = started();
+    s.deck = ['goat'];
+    s = applyAction(s, 'p0', { type: 'CHOOSE_AUCTION' });
+    s = applyAction(s, 'p0', { type: 'RESOLVE_AUCTION' });
+    const p0 = s.players.find((p) => p.id === 'p0')!;
+    expect(p0.animals.goat).toBe(1);
+    expect(moneyValue(p0.money)).toBe(90);
+    expect(s.phase).toBe('turn_start');
+  });
+
+  it('RESOLVE_AUCTION hors enchère est refusé', () => {
+    const s = started();
+    expect(() => applyAction(s, 'p0', { type: 'RESOLVE_AUCTION' })).toThrow(GameError);
+  });
 });
 
 describe('âne', () => {
